@@ -1,6 +1,15 @@
 # how to use 
 
 ```go
+package main
+
+import (
+	"log"
+
+	gtbg "github.com/fy403/gotenberg-client-go"
+	"github.com/google/uuid"
+)
+
 func main() {
 	dir := "\\Users\\Administrator\\print"
 
@@ -19,7 +28,7 @@ func main() {
 	}
 	saveFileName := "merge_" + uuid.NewString()
 
-	gotenberg := NewGotenberg(url)
+	gotenberg := gtbg.NewGotenberg(url)
 	request, err := gotenberg.NewRequest(extraParams, formKey, paths...)
 	if err != nil {
 		log.Fatalln(err)
@@ -34,4 +43,5 @@ func main() {
 	}
 	log.Printf("Pages: %d\n", pages)
 }
+
 ```
