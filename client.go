@@ -1,10 +1,9 @@
-package main
+package client
 
 import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"mime/multipart"
 	"net/http"
@@ -41,13 +40,13 @@ func NewGotenberg(backendUrl string) *Gotenberg {
 }
 
 // Creates a new file upload http request with optional extra params
-func (this *Gotenberg) NewRequest(params map[string]string, paramName string, paths ...string) (request *http.Request, err error) {
+func (gtbg *Gotenberg) NewRequest(params map[string]string, paramName string, paths ...string) (request *http.Request, err error) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	for _, path := range paths {
-		if this.isNetworkPath(path) {
+		if gtbg.isNetworkPath(path) {
 			// Download
-			tmpPath, err := this.downloadFile(path)
+			tmpPath, err := gtbg.downloadFile(path)
 			if err != nil {
 				return nil, err
 			}
@@ -76,7 +75,7 @@ func (this *Gotenberg) NewRequest(params map[string]string, paramName string, pa
 	if err != nil {
 		return nil, err
 	}
-	request, err = http.NewRequest("POST", this.backendUrl, body)
+	request, err = http.NewRequest("POST", gtbg.backendUrl, body)
 	if err != nil {
 		return nil, err
 	}
@@ -84,12 +83,12 @@ func (this *Gotenberg) NewRequest(params map[string]string, paramName string, pa
 	return
 }
 
-func (this *Gotenberg) Send(request *http.Request, saveDirName, saveFileName string) (string, error) {
-	resp, err := this.client.Do(request)
+func (gtbg *Gotenberg) Send(request *http.Request, saveDirName, saveFileName string) (string, error) {
+	resp, err := gtbg.client.Do(request)
 	if err != nil {
 		return "", err
 	}
-	reg, err := regexp.Compile(this.contentTypeRegeExp)
+	reg, err := regexp.Compile(gtbg.contentTypeRegeExp)
 	if err != nil {
 		return "", err
 	}
@@ -101,7 +100,7 @@ func (this *Gotenberg) Send(request *http.Request, saveDirName, saveFileName str
 	var savePdfPath string
 	if v := reg.FindAllString(resp.Header.Get("Content-Type"), -1); len(v) > 0 {
 		_ = os.MkdirAll(saveDirName, 0755)
-		savePdfPath = fmt.Sprintf("%s%s%s.%s", saveDirName, this.pathSeparator, saveFileName, strings.Split(v[0], "/")[1])
+		savePdfPath = fmt.Sprintf("%s%s%s.%s", saveDirName, gtbg.pathSeparator, saveFileName, strings.Split(v[0], "/")[1])
 		out, err := os.Create(savePdfPath)
 		if err != nil {
 			return "", err
@@ -117,7 +116,7 @@ func (this *Gotenberg) Send(request *http.Request, saveDirName, saveFileName str
 
 // DownloadFile will download a url to a local file. It's efficient because it will
 // write as it downloads and not load the whole file into memory.
-func (this *Gotenberg) downloadFile(url string) (string, error) {
+func (gtbg *Gotenberg) downloadFile(url string) (string, error) {
 	// Get the data
 	resp, err := http.Get(url)
 	if err != nil {
@@ -126,7 +125,7 @@ func (this *Gotenberg) downloadFile(url string) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("Unknown StatusCode: %d", resp.StatusCode)
 	}
-	reg, err := regexp.Compile(this.contentTypeRegeExp)
+	reg, err := regexp.Compile(gtbg.contentTypeRegeExp)
 	if err != nil {
 		return "", err
 	}
@@ -144,7 +143,7 @@ func (this *Gotenberg) downloadFile(url string) (string, error) {
 	if suffix == "" {
 		return "", fmt.Errorf("Unknown Centent-Type: %s", resp.Header.Get("Content-Type"))
 	}
-	saveFilePath := fmt.Sprintf("%s%s%s.%s", os.TempDir(), this.pathSeparator, uuid.NewString(), suffix)
+	saveFilePath := fmt.Sprintf("%s%s%s.%s", os.TempDir(), gtbg.pathSeparator, uuid.NewString(), suffix)
 	defer resp.Body.Close()
 
 	// Create the file
@@ -159,12 +158,12 @@ func (this *Gotenberg) downloadFile(url string) (string, error) {
 	return saveFilePath, err
 }
 
-func (this *Gotenberg) isNetworkPath(path string) bool {
+func (gtbg *Gotenberg) isNetworkPath(path string) bool {
 	reg, _ := regexp.Compile(`^((ht|f)tps?):\/\/`)
 	return len(reg.FindAllString(path, -1)) > 0
 }
 
-func (this *Gotenberg) pdfpages(pdfPath string) (int, error) {
+func (gtbg *Gotenberg) Pdfpages(pdfPath string) (int, error) {
 	f, r, err := pdf.Open(pdfPath)
 	// remember close file
 	defer f.Close()
@@ -173,39 +172,4 @@ func (this *Gotenberg) pdfpages(pdfPath string) (int, error) {
 	}
 	totalPage := r.NumPage()
 	return totalPage, nil
-}
-
-func main() {
-	dir := "\\Users\\Administrator\\print"
-
-	paths := []string{
-		"https://ds-web-bucket.oss-cn-shenzhen.aliyuncs.com/74/2020/9/1/2483_6658f61b.unknown",
-		"https://www.rfc-editor.org/rfc/pdfrfc/rfc3510.txt.pdf",
-		dir + "\\" + "Description.doc",
-		dir + "\\" + "print_test.pdf",
-		dir + "\\" + "file.xlsx",
-	}
-
-	url := "http://localhost:3000/forms/libreoffice/convert"
-	formKey := "files"
-	extraParams := map[string]string{
-		"merge":     "true",
-		"pdfFormat": "PDF/A-1a",
-	}
-	saveFileName := "merge_" + uuid.NewString()
-
-	gotenberg := NewGotenberg(url)
-	request, err := gotenberg.NewRequest(extraParams, formKey, paths...)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	savePdfPath, err := gotenberg.Send(request, dir, saveFileName)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	pages, err := gotenberg.pdfpages(savePdfPath)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	log.Printf("Pages: %d\n", pages)
 }

@@ -1,4 +1,4 @@
-module tmp
+module github.com/fy403/gotenberg-client-go
 
 go 1.17
 
